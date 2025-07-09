@@ -1,249 +1,185 @@
 
 import { useState, useEffect } from "react";
 import { Board, Column, Task } from "../types/kanban";
-import { 
-  fetchBoard, 
-  createColumn, 
-  updateColumn, 
-  deleteColumn, 
-  createTask, 
-  updateTask, 
-  deleteTask, 
-  updateTaskPosition,
-  updateColumnOrder
-} from "../api/kanbanApi";
+import { initialBoard } from "../utils/mockData";
 import { toast } from "sonner";
 
 export const useBoard = () => {
-  const [board, setBoard] = useState<Board>({ columns: [] });
+  const [board, setBoard] = useState<Board>(initialBoard);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Load initial board data
   useEffect(() => {
-    const loadBoard = async () => {
-      try {
-        setIsLoading(true);
-        const data = await fetchBoard();
-        setBoard(data);
-        setError(null);
-      } catch (err) {
-        setError("Failed to load board data");
-        toast.error("Failed to load board data");
-        console.error(err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadBoard();
+    setBoard(initialBoard);
+    setIsLoading(false);
   }, []);
 
-  // Add a new column
-  const addColumn = async (title: string) => {
-    try {
-      const newOrder = board.columns.length;
-      const newColumn = await createColumn(title, newOrder);
-      
-      setBoard(prev => ({
-        ...prev,
-        columns: [...prev.columns, newColumn]
-      }));
-      
-      toast.success("Column added");
-    } catch (err) {
-      toast.error("Failed to add column");
-      console.error(err);
-    }
+  // Add new column
+  const addColumn = async (title: string): Promise<void> => {
+    const newId = `column-${Date.now()}`;
+    setBoard(prev => ({
+      ...prev,
+      columns: [
+        ...prev.columns,
+        {
+          id: newId,
+          title,
+          order: prev.columns.length,
+          tasks: []
+        }
+      ]
+    }));
+    toast.success("Column added successfully");
   };
 
-  // Update column title
-  const editColumnTitle = async (columnId: string, newTitle: string) => {
-    try {
-      await updateColumn(columnId, newTitle);
-      
-      setBoard(prev => ({
+  // Add new task
+  const addTask = async (columnId: string, title: string): Promise<void> => {
+    const newId = `task-${Date.now()}`;
+    setBoard(prev => {
+      const columnIndex = prev.columns.findIndex(col => col.id === columnId);
+      if (columnIndex === -1) return prev;
+
+      const newTasks = [...prev.columns[columnIndex].tasks, {
+        id: newId,
+        title,
+        column_id: columnId,
+        order: prev.columns[columnIndex].tasks.length
+      }];
+
+      const newColumns = [...prev.columns];
+      newColumns[columnIndex] = {
+        ...prev.columns[columnIndex],
+        tasks: newTasks
+      };
+
+      return {
         ...prev,
-        columns: prev.columns.map(col => 
-          col.id === columnId ? { ...col, title: newTitle } : col
-        )
-      }));
-    } catch (err) {
-      toast.error("Failed to update column");
-      console.error(err);
-    }
+        columns: newColumns
+      };
+    });
+    toast.success("Task added successfully");
   };
 
-  // Delete a column
-  const removeColumn = async (columnId: string) => {
-    try {
-      await deleteColumn(columnId);
+  // Edit task title
+  const editTaskTitle = async (taskId: string, newTitle: string): Promise<void> => {
+    setBoard(prev => {
+      const columnIndex = prev.columns.findIndex(col => 
+        col.tasks.some(task => task.id === taskId)
+      );
       
-      setBoard(prev => ({
+      if (columnIndex === -1) return prev;
+
+      const taskIndex = prev.columns[columnIndex].tasks.findIndex(
+        task => task.id === taskId
+      );
+      
+      if (taskIndex === -1) return prev;
+
+      const newTasks = [...prev.columns[columnIndex].tasks];
+      newTasks[taskIndex] = {
+        ...newTasks[taskIndex],
+        title: newTitle
+      };
+
+      const newColumns = [...prev.columns];
+      newColumns[columnIndex] = {
+        ...prev.columns[columnIndex],
+        tasks: newTasks
+      };
+
+      return {
         ...prev,
-        columns: prev.columns.filter(col => col.id !== columnId)
-      }));
-      
-      toast.success("Column deleted");
-    } catch (err) {
-      toast.error("Failed to delete column");
-      console.error(err);
-    }
+        columns: newColumns
+      };
+    });
+    toast.success("Task title updated successfully");
   };
 
-  // Add a task to a column
-  const addTask = async (columnId: string, title: string) => {
-    try {
-      const column = board.columns.find(col => col.id === columnId);
-      if (!column) return;
+  // Delete task
+  const deleteTask = async (taskId: string): Promise<void> => {
+    setBoard(prev => {
+      const columnIndex = prev.columns.findIndex(col => 
+        col.tasks.some(task => task.id === taskId)
+      );
       
-      const newOrder = column.tasks.length;
-      const newTask = await createTask(columnId, title, newOrder);
-      
-      setBoard(prev => ({
+      if (columnIndex === -1) return prev;
+
+      const newTasks = prev.columns[columnIndex].tasks.filter(
+        task => task.id !== taskId
+      );
+
+      const newColumns = [...prev.columns];
+      newColumns[columnIndex] = {
+        ...prev.columns[columnIndex],
+        tasks: newTasks
+      };
+
+      return {
         ...prev,
-        columns: prev.columns.map(col => {
-          if (col.id === columnId) {
-            return {
-              ...col,
-              tasks: [...col.tasks, newTask]
-            };
-          }
-          return col;
-        })
-      }));
-    } catch (err) {
-      toast.error("Failed to add task");
-      console.error(err);
-    }
+        columns: newColumns
+      };
+    });
+    toast.success("Task deleted successfully");
   };
 
-  // Update task title
-  const editTaskTitle = async (taskId: string, newTitle: string) => {
-    try {
-      await updateTask(taskId, newTitle);
+  // Move task between columns
+  const moveTask = async (taskId: string, sourceColumnId: string, targetColumnId: string, newIndex: number): Promise<void> => {
+    setBoard(prev => {
+      const sourceColumnIndex = prev.columns.findIndex(col => col.id === sourceColumnId);
+      const targetColumnIndex = prev.columns.findIndex(col => col.id === targetColumnId);
       
-      setBoard(prev => ({
-        ...prev,
-        columns: prev.columns.map(col => ({
-          ...col,
-          tasks: col.tasks.map(task => 
-            task.id === taskId ? { ...task, title: newTitle } : task
-          )
-        }))
-      }));
-    } catch (err) {
-      toast.error("Failed to update task");
-      console.error(err);
-    }
-  };
+      if (sourceColumnIndex === -1 || targetColumnIndex === -1) {
+        return prev;
+      }
 
-  // Delete a task
-  const removeTask = async (taskId: string) => {
-    try {
-      await deleteTask(taskId);
+      const sourceColumn = prev.columns[sourceColumnIndex];
+      const targetColumn = prev.columns[targetColumnIndex];
+      const taskIndex = sourceColumn.tasks.findIndex(t => t.id === taskId);
       
-      setBoard(prev => ({
-        ...prev,
-        columns: prev.columns.map(col => ({
-          ...col,
-          tasks: col.tasks.filter(task => task.id !== taskId)
-        }))
-      }));
-    } catch (err) {
-      toast.error("Failed to delete task");
-      console.error(err);
-    }
-  };
+      if (taskIndex === -1) {
+        return prev;
+      }
 
-  // Move a task between columns or reorder within a column
-  const moveTask = async (taskId: string, sourceColId: string, destColId: string, newIndex: number) => {
-    try {
-      const sourceColumn = board.columns.find(col => col.id === sourceColId);
-      const destColumn = board.columns.find(col => col.id === destColId);
-      
-      if (!sourceColumn || !destColumn) return;
-      
-      const taskToMove = sourceColumn.tasks.find(task => task.id === taskId);
-      if (!taskToMove) return;
-      
-      // Update the task position in the database
-      await updateTaskPosition(taskId, destColId, newIndex);
-      
-      // Update local state
-      setBoard(prev => {
-        const newColumns = prev.columns.map(col => {
-          // Remove task from source column
-          if (col.id === sourceColId) {
-            return {
-              ...col,
-              tasks: col.tasks.filter(task => task.id !== taskId)
-            };
-          }
-          
-          // Add task to destination column
-          if (col.id === destColId) {
-            const newTasks = [...col.tasks];
-            
-            // Insert task at new position
-            newTasks.splice(newIndex, 0, {
-              ...taskToMove,
-              column_id: destColId
-            });
-            
-            // Update order for all tasks in the destination column
-            const updatedTasks = newTasks.map((task, index) => ({
-              ...task,
-              order: index
-            }));
-            
-            return {
-              ...col,
-              tasks: updatedTasks
-            };
-          }
-          
-          return col;
-        });
-        
-        return {
-          ...prev,
-          columns: newColumns
-        };
-      });
-    } catch (err) {
-      toast.error("Failed to move task");
-      console.error(err);
-    }
+      // Remove task from source column
+      const sourceTasks = [...sourceColumn.tasks];
+      const [removedTask] = sourceTasks.splice(taskIndex, 1);
+
+      // Add task to target column at new index
+      const targetTasks = [...targetColumn.tasks];
+      targetTasks.splice(newIndex, 0, { ...removedTask, column_id: targetColumnId });
+
+      // Create new columns array
+      const newColumns = [...prev.columns];
+      newColumns[sourceColumnIndex] = { ...sourceColumn, tasks: sourceTasks };
+      newColumns[targetColumnIndex] = { ...targetColumn, tasks: targetTasks };
+
+      return {
+        ...prev,
+        columns: newColumns
+      };
+    });
+    toast.success("Task moved successfully");
   };
 
   // Reorder columns
-  const moveColumn = async (columnId: string, newIndex: number) => {
-    try {
-      await updateColumnOrder(columnId, newIndex);
-      
-      setBoard(prev => {
-        const columnToMove = prev.columns.find(col => col.id === columnId);
-        if (!columnToMove) return prev;
-        
-        const newColumns = prev.columns.filter(col => col.id !== columnId);
-        newColumns.splice(newIndex, 0, columnToMove);
-        
-        // Update order for all columns
-        const updatedColumns = newColumns.map((col, index) => ({
-          ...col,
-          order: index
-        }));
-        
-        return {
-          ...prev,
-          columns: updatedColumns
-        };
+  const moveColumn = async (sourceIndex: number, targetIndex: number): Promise<void> => {
+    setBoard(prev => {
+      const columns = [...prev.columns];
+      const [removed] = columns.splice(sourceIndex, 1);
+      columns.splice(targetIndex, 0, removed);
+
+      // Update order
+      columns.forEach((column, index) => {
+        column.order = index;
       });
-    } catch (err) {
-      toast.error("Failed to reorder columns");
-      console.error(err);
-    }
+
+      return {
+        ...prev,
+        columns: columns
+      };
+    });
+    toast.success("Columns reordered successfully");
   };
 
   return {
@@ -251,12 +187,10 @@ export const useBoard = () => {
     isLoading,
     error,
     addColumn,
-    editColumnTitle,
-    removeColumn,
     addTask,
-    editTaskTitle,
-    removeTask,
     moveTask,
-    moveColumn
+    moveColumn,
+    editTaskTitle,
+    deleteTask
   };
 };

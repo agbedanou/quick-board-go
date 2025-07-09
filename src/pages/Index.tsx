@@ -10,11 +10,9 @@ const Index: React.FC = () => {
     isLoading, 
     error,
     addColumn,
-    editColumnTitle,
-    removeColumn,
     addTask,
     editTaskTitle,
-    removeTask,
+    deleteTask,
     moveTask,
     moveColumn
   } = useBoard();
@@ -32,11 +30,26 @@ const Index: React.FC = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col">
-        <Header />
-        <main className="flex-grow flex items-center justify-center">
-          <div className="text-lg text-red-600">{error}</div>
-        </main>
+      <div className="min-h-screen bg-gray-100">
+        {isLoading ? (
+          <div className="flex items-center justify-center min-h-screen">
+            <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500"></div>
+          </div>
+        ) : error ? (
+          <div className="flex items-center justify-center min-h-screen">
+            <p className="text-red-500">Error loading board: {error}</p>
+          </div>
+        ) : (
+          <Board
+            board={board}
+            onAddColumn={addColumn}
+            onAddTask={addTask}
+            onEditTaskTitle={editTaskTitle}
+            onDeleteTask={deleteTask}
+            onMoveTask={moveTask}
+            onMoveColumn={moveColumn}
+          />
+        )}
       </div>
     );
   }
@@ -45,14 +58,12 @@ const Index: React.FC = () => {
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <Header />
       <main className="flex-grow overflow-hidden">
-        <Board 
+        <Board
           board={board}
           onAddColumn={addColumn}
-          onEditColumnTitle={editColumnTitle}
-          onRemoveColumn={removeColumn}
           onAddTask={addTask}
           onEditTaskTitle={editTaskTitle}
-          onRemoveTask={removeTask}
+          onDeleteTask={deleteTask}
           onMoveTask={moveTask}
           onMoveColumn={moveColumn}
         />

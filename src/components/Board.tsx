@@ -1,12 +1,10 @@
-
-import React from "react";
+import React, { useState, useCallback } from 'react';
 import { Board as BoardType } from "../types/kanban";
-import Column from "./Column";
-import { 
-  DndContext, 
-  DragOverlay, 
-  DragStartEvent, 
+import {
+  DndContext,
+  DragOverlay,
   DragEndEvent,
+  DragStartEvent,
   MouseSensor,
   TouchSensor,
   useSensor,
@@ -14,244 +12,180 @@ import {
   UniqueIdentifier,
   DragOverEvent
 } from "@dnd-kit/core";
-import { 
-  SortableContext, 
-  horizontalListSortingStrategy,
-  arrayMove
+import {
+  SortableContext,
+  arrayMove,
+  verticalListSortingStrategy
 } from "@dnd-kit/sortable";
+import Column from "./Column";
 import Card from "./Card";
 import SortableColumn from "./SortableColumn";
 
 interface BoardProps {
   board: BoardType;
   onAddColumn: (title: string) => Promise<void>;
-  onEditColumnTitle: (columnId: string, title: string) => Promise<void>;
-  onRemoveColumn: (columnId: string) => Promise<void>;
   onAddTask: (columnId: string, title: string) => Promise<void>;
   onEditTaskTitle: (taskId: string, title: string) => Promise<void>;
-  onRemoveTask: (taskId: string) => Promise<void>;
-  onMoveTask: (taskId: string, sourceColId: string, destColId: string, newIndex: number) => Promise<void>;
-  onMoveColumn: (columnId: string, newIndex: number) => Promise<void>;
+  onDeleteTask: (taskId: string) => Promise<void>;
+  onMoveTask: (taskId: string, sourceColumnId: string, targetColumnId: string, newIndex: number) => Promise<void>;
+  onMoveColumn: (sourceIndex: number, targetIndex: number) => Promise<void>;
 }
 
 const Board: React.FC<BoardProps> = ({ 
   board,
   onAddColumn,
-  onEditColumnTitle,
-  onRemoveColumn,
   onAddTask,
   onEditTaskTitle,
-  onRemoveTask,
+  onDeleteTask,
   onMoveTask,
   onMoveColumn
 }) => {
   const [newColumnTitle, setNewColumnTitle] = React.useState("");
   const [isAddingColumn, setIsAddingColumn] = React.useState(false);
-  const [activeTaskId, setActiveTaskId] = React.useState<UniqueIdentifier | null>(null);
-  const [activeColumnId, setActiveColumnId] = React.useState<UniqueIdentifier | null>(null);
-  
+  const [activeTaskId, setActiveTaskId] = React.useState<string | null>(null);
   const sensors = useSensors(
     useSensor(MouseSensor, {
-      // Require the mouse to move by 10 pixels before activating
-      activationConstraint: {
-        distance: 10,
-      },
-    }),
-    useSensor(TouchSensor, {
-      // Press delay of 250ms, with tolerance of 5px of movement
       activationConstraint: {
         delay: 250,
-        tolerance: 5,
-      },
-    })
+        tolerance: 5
+      }
+    }),
+    useSensor(TouchSensor)
   );
 
-  const handleAddColumn = () => {
+  const handleAddColumn = async () => {
     if (newColumnTitle.trim()) {
-      onAddColumn(newColumnTitle.trim());
+      await onAddColumn(newColumnTitle.trim());
       setNewColumnTitle("");
       setIsAddingColumn(false);
     }
   };
 
   const getActiveTask = () => {
-    if (!activeTaskId) return null;
-    
-    for (const column of board.columns) {
-      const task = column.tasks.find(task => task.id === activeTaskId);
-      if (task) return task;
-    }
-    return null;
+    return board.columns.flatMap(col => col.tasks).find(task => task.id === activeTaskId);
   };
 
   const getActiveColumn = () => {
-    if (!activeColumnId) return null;
-    return board.columns.find(column => column.id === activeColumnId) || null;
+    return board.columns.find(col => col.id === activeColumnId);
+  };
+
+  const handleAddTask = async (columnId: string, title: string) => {
+    await onAddTask(columnId, title);
+  };
+
+  const handleEditTaskTitle = async (taskId: string, newTitle: string) => {
+    await onEditTaskTitle(taskId, newTitle);
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    await onDeleteTask(taskId);
   };
 
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
-    
-    if (active.data.current?.type === 'task') {
-      setActiveTaskId(active.id);
-    } else if (active.data.current?.type === 'column') {
-      setActiveColumnId(active.id);
-    }
+    setActiveTaskId(active.id as string);
   };
 
-  const handleDragOver = (event: DragOverEvent) => {
+  const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     
     if (!over) return;
 
-    // Handle moving a task
-    if (active.data.current?.type === 'task' && over.data.current?.type === 'column') {
-      const taskId = active.id as string;
-      const sourceColId = active.data.current.columnId as string;
-      const destColId = over.id as string;
-      
-      if (sourceColId !== destColId) {
-        // Get the destination column
-        const destColumn = board.columns.find(col => col.id === destColId);
-        
-        if (destColumn) {
-          // Move to a new column at the end
-          onMoveTask(taskId, sourceColId, destColId, destColumn.tasks.length);
-        }
-      }
-    }
+    const activeTask = getActiveTask();
+    const targetColumn = board.columns.find(col => col.id === over.id);
+
+    if (!activeTask || !targetColumn) return;
+
+    await onMoveTask(activeTask.id, activeTask.column_id, targetColumn.id, targetColumn.tasks.length);
+    setActiveTaskId(null);
   };
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleColumnDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     
-    if (!over) {
-      setActiveTaskId(null);
-      setActiveColumnId(null);
-      return;
-    }
+    if (!over) return;
 
-    // Handle moving a task
-    if (active.data.current?.type === 'task' && over.data.current?.type === 'column') {
-      const taskId = active.id as string;
-      const sourceColId = active.data.current.columnId as string;
-      const destColId = over.id as string;
-      
-      // Get the source column
-      const sourceColumn = board.columns.find(col => col.id === sourceColId);
-      
-      if (sourceColId !== destColId && sourceColumn) {
-        // Move to a new column at the end
-        onMoveTask(taskId, sourceColId, destColId, 0);
-      }
+    const sourceIndex = board.columns.findIndex(col => col.id === active.id);
+    const targetIndex = board.columns.findIndex(col => col.id === over.id);
+
+    if (sourceIndex !== -1 && targetIndex !== -1 && sourceIndex !== targetIndex) {
+      await onMoveColumn(sourceIndex, targetIndex);
     }
-    
-    // Handle reordering columns
-    if (
-      active.data.current?.type === 'column' &&
-      over.data.current?.type === 'column' &&
-      active.id !== over.id
-    ) {
-      const activeColumnIndex = board.columns.findIndex(col => col.id === active.id);
-      const overColumnIndex = board.columns.findIndex(col => col.id === over.id);
-      
-      if (activeColumnIndex !== -1 && overColumnIndex !== -1) {
-        onMoveColumn(active.id as string, overColumnIndex);
-      }
-    }
-    
-    setActiveTaskId(null);
-    setActiveColumnId(null);
   };
 
   return (
-    <DndContext
-      sensors={sensors}
-      onDragStart={handleDragStart}
-      onDragOver={handleDragOver}
-      onDragEnd={handleDragEnd}
-    >
-      <div className="flex gap-4 p-4 overflow-x-auto min-h-[calc(100vh-64px)]">
-        <SortableContext 
-          items={board.columns.map(column => column.id)}
-          strategy={horizontalListSortingStrategy}
+    <div className="container mx-auto px-4 py-8">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Kanban Board</h1>
+        <button
+          onClick={() => setIsAddingColumn(true)}
+          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
         >
+          Add Column
+        </button>
+      </div>
+
+      {isAddingColumn && (
+        <div className="mb-6">
+          <input
+            type="text"
+            value={newColumnTitle}
+            onChange={(e) => setNewColumnTitle(e.target.value)}
+            onKeyPress={(e) => e.key === "Enter" && handleAddColumn()}
+            className="border-2 border-blue-500 p-2 rounded w-64"
+            placeholder="Enter column title..."
+            autoFocus
+          />
+          <button
+            onClick={handleAddColumn}
+            className="ml-2 bg-blue-500 hover:bg-blue-700 text-white font-bold py-1 px-3 rounded"
+          >
+            Add
+          </button>
+          <button
+            onClick={() => setIsAddingColumn(false)}
+            className="ml-2 bg-gray-500 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {board.columns.map((column) => (
-            <SortableColumn
+            <SortableContext
               key={column.id}
-              column={column}
-              onEditTitle={onEditColumnTitle}
-              onRemove={onRemoveColumn}
-              onAddTask={onAddTask}
-              onEditTaskTitle={onEditTaskTitle}
-              onRemoveTask={onRemoveTask}
-              onMoveTask={onMoveTask}
-            />
-          ))}
-        </SortableContext>
-        
-        <div className="w-72 flex-shrink-0">
-          {isAddingColumn ? (
-            <div className="bg-white p-2 rounded-md shadow-sm border border-gray-200">
-              <input
-                type="text"
-                className="w-full border border-gray-300 p-2 mb-2 rounded"
-                placeholder="Enter column title"
-                value={newColumnTitle}
-                onChange={(e) => setNewColumnTitle(e.target.value)}
-                autoFocus
-              />
-              <div className="flex gap-2">
-                <button
-                  className="bg-blue-500 text-white px-3 py-1 rounded-md hover:bg-blue-600 transition-colors"
-                  onClick={handleAddColumn}
-                >
-                  Add
-                </button>
-                <button
-                  className="bg-gray-200 text-gray-700 px-3 py-1 rounded-md hover:bg-gray-300 transition-colors"
-                  onClick={() => setIsAddingColumn(false)}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button 
-              className="bg-gray-100 hover:bg-gray-200 transition-colors p-2 rounded-md text-gray-700 w-full text-left"
-              onClick={() => setIsAddingColumn(true)}
+              items={column.tasks}
+              strategy={verticalListSortingStrategy}
             >
-              + Add another column
-            </button>
-          )}
+              <div className="flex flex-col gap-2">
+                <SortableColumn
+                  column={column}
+                  onAddTask={(title: string) => handleAddTask(column.id, title)}
+                  onEditTaskTitle={handleEditTaskTitle}
+                  onDeleteTask={handleDeleteTask}
+                />
+              </div>
+            </SortableContext>
+          ))}
         </div>
 
         <DragOverlay>
-          {activeTaskId ? (
-            <div className="opacity-80">
-              <Card 
-                task={getActiveTask() || { id: '', title: '', column_id: '', order: 0 }}
-                onEditTitle={onEditTaskTitle}
-                onRemove={onRemoveTask}
-              />
-            </div>
-          ) : null}
-          {activeColumnId ? (
-            <div className="opacity-80">
-              <Column
-                column={getActiveColumn() || { id: '', title: '', order: 0, tasks: [] }}
-                onEditTitle={onEditColumnTitle}
-                onRemove={onRemoveColumn}
-                onAddTask={onAddTask}
-                onEditTaskTitle={onEditTaskTitle}
-                onRemoveTask={onRemoveTask}
-                onMoveTask={onMoveTask}
-              />
-            </div>
-          ) : null}
+          {activeTaskId && (
+            <Card
+              task={getActiveTask() || { id: '', title: '', column_id: '', order: 0 }}
+              onEditTitle={handleEditTaskTitle}
+              onDelete={handleDeleteTask}
+            />
+          )}
         </DragOverlay>
-      </div>
-    </DndContext>
+      </DndContext>
+    </div>
   );
 };
 

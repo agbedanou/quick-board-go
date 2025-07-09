@@ -1,5 +1,4 @@
-
-import { Board } from "../types/kanban";
+import { Board, Column, Task } from "../types/kanban";
 
 export const initialBoard: Board = {
   columns: [
@@ -12,21 +11,21 @@ export const initialBoard: Board = {
           id: "task-1",
           title: "Research user requirements",
           column_id: "todo",
-          order: 0,
+          order: 0
         },
         {
           id: "task-2",
           title: "Create wireframes",
           column_id: "todo",
-          order: 1,
+          order: 1
         },
         {
           id: "task-3",
-          title: "Update documentation",
+          title: "Design UI components",
           column_id: "todo",
-          order: 2,
-        },
-      ],
+          order: 2
+        }
+      ]
     },
     {
       id: "in-progress",
@@ -35,17 +34,17 @@ export const initialBoard: Board = {
       tasks: [
         {
           id: "task-4",
-          title: "Implement authentication flow",
+          title: "Implement drag and drop",
           column_id: "in-progress",
-          order: 0,
+          order: 0
         },
         {
           id: "task-5",
-          title: "Design database schema",
+          title: "Add column management",
           column_id: "in-progress",
-          order: 1,
-        },
-      ],
+          order: 1
+        }
+      ]
     },
     {
       id: "done",
@@ -54,23 +53,23 @@ export const initialBoard: Board = {
       tasks: [
         {
           id: "task-6",
-          title: "Set up project repository",
+          title: "Set up project",
           column_id: "done",
-          order: 0,
+          order: 0
         },
         {
           id: "task-7",
           title: "Configure CI/CD pipeline",
           column_id: "done",
-          order: 1,
+          order: 1
         },
         {
           id: "task-8",
           title: "Install dependencies",
           column_id: "done",
-          order: 2,
-        },
-      ],
-    },
-  ],
+          order: 2
+        }
+      ]
+    }
+  ]
 };
